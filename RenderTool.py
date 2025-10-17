@@ -21,6 +21,10 @@ defaultCamHeight = 2
 defaultCamResolutionX = 256
 defaultCamResolutionY = 256
 
+defaultCamMaxResolution = 8192
+
+default_path = ""
+
 
 # MODIFIED VARIABLES #
 # ------------------ #
@@ -41,6 +45,8 @@ camResolutionY = 0
 
 # Function To Setup Camera initially when SetupCam is pressed #
 def SetupCam(*args):
+    UpdateTempOutputPath()
+
     if cmds.objExists("renderCamera1"):
         cmds.delete("renderCamera1")
     
@@ -57,8 +63,8 @@ def SetupCam(*args):
     cmds.checkBox("SplitByDirectionField", value=True, e=True)
     cmds.checkBox("CombineToSpritesheetField", value=True, e=True)
 
-    cmds.intField("ResolutionField1", value=256, e=True)
-    cmds.intField("ResolutionField2", value=256, e=True)
+    cmds.intField("ResolutionField1", value=defaultCamResolutionX, e=True)
+    cmds.intField("ResolutionField2", value=defaultCamResolutionY, e=True)
 
     UpdateCameraDirectionCount()
     UpdateCameraHeight()
@@ -66,6 +72,8 @@ def SetupCam(*args):
     UpdateCameraStartAngle()
     UpdateCameraMaxAngle()
     UpdatePerRenderRotation()
+    UpdatePreviewRotation()
+    UpdateCameraPosition()
     ResolutionChanged()
     RefreshPreview()
 
@@ -77,12 +85,56 @@ def CheckCameraExists(Camera):
 
 
 
+
+
+
+
+def UpdateTempOutputPath():
+    global default_path
+    cmds.setAttr("defaultRenderGlobals.imageFormat", 8)
+    cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "sprite_preview", type="string")
+    cmds.setAttr("defaultRenderGlobals.enableDefaultLight", 1)
+    default_project_images = cmds.workspace(expandName="images")
+    #default_project_images = cmds.workspace(expandName="tmp")
+    default_path = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.jpg")).replace("\\", "/")
+    #default_path = os.path.join(default_project_images, "sprite_preview.jpg")
+
+def fix_path(path):
+    """
+    Ensures file paths are compatible with Maya across Windows/macOS/Linux.
+    Converts all slashes to forward (/) and expands environment variables.
+    """
+    if not path:
+        return ""
+    path = os.path.expandvars(path)
+    path = os.path.expanduser(path)
+    return path.replace("/", "\\")
+
+def RefreshPreview():
+    global default_path
+    CheckCameraExists("renderCamera1")
+    cmds.render("renderCamera1", x=camResolutionX, y=camResolutionY)
+    #cmds.render("renderCamera1", x=256, y=256, writeImage=preview_path)
+    #mel.eval("render 'renderCamera1' -x 256 -y 256 -rd '{preview_path}'")
+    #mel.eval(f'render "renderCamera1" -x 256 -y 256 -l {preview_path}')
+    cmds.image("PreviewImage", e=True, image=default_path)
+    print(cmds.image("PreviewImage", q=True, image=True))
+    print(f"Preview updated: {default_path}")
+#"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.jpg"
+#RefreshPreview()
+
+
+
+
+
+
 # Update Camera Direction Count #
 def UpdateCameraDirectionCount(*args):
     CheckCameraExists("renderCamera1")
     global camDirectionCount
     camDirectionCount = cmds.intField("DirectionCountField", q=True, value=True)
-    cmds.intSliderGrp("PreviewAngleSlider", e=True, max=camDirectionCount, value=camDirection)
+    cmds.intSlider("PreviewSlider", e=True, max=camDirectionCount, value=camDirection)
+    UpdateCameraPosition()
     UpdatePerRenderRotation()
     RefreshPreview()
 
@@ -90,9 +142,16 @@ def UpdateCameraDirectionCount(*args):
 def UpdateCameraProximity(*args):
     CheckCameraExists("renderCamera1")
     global camProximity
-    global camStartAngle
     camProximity = cmds.floatField("CameraProximityField", q=True, value=True)
     #cmds.setAttr("renderCamera1.translateX", camProximity)
+    UpdateCameraPosition()
+    RefreshPreview()
+
+def UpdateCameraPosition():
+    global camStartAngle
+    global PerRenderRotation
+    global camDirection
+    global camProximity
 #    S=O/H
 #    SIN(ANGLE) = OPPOSITE / HYPOTENUSE
 #    SIN(ANGLE) * HYPOTENUSE = OPPOSITE
@@ -104,11 +163,11 @@ def UpdateCameraProximity(*args):
 #    COS(Rotation) * CamDistance = CamLocationX
 
 #    T=O/A
-    CamPosX = math.sin(math.radians(camStartAngle)) * camProximity
-    CamPosZ = math.cos(math.radians(camStartAngle)) * camProximity
+    CamPosX = math.sin(math.radians(camStartAngle + (PerRenderRotation * (camDirection-1)))) * camProximity
+    CamPosZ = math.cos(math.radians(camStartAngle + (PerRenderRotation * (camDirection-1)))) * camProximity
+    cmds.setAttr("renderCamera1.rotateY", (camStartAngle + ((camDirection-1) * PerRenderRotation)))
     cmds.setAttr("renderCamera1.translateX", CamPosX)
     cmds.setAttr("renderCamera1.translateZ", CamPosZ)
-    RefreshPreview()
 
 # Update Camera Height #
 def UpdateCameraHeight(*args):
@@ -123,22 +182,32 @@ def UpdateCameraStartAngle(*args):
     CheckCameraExists("renderCamera1")
     global camStartAngle
     camStartAngle = cmds.floatField("StartAngleField", q=True, value=True)
-    cmds.setAttr("renderCamera1.rotateY", camStartAngle)
-    UpdateCameraProximity()
+    #cmds.setAttr("renderCamera1.rotateY", (camStartAngle + (camDirection * PerRenderRotation)))
+    UpdatePerRenderRotation()
+    UpdateCameraPosition()
+    RefreshPreview()
 
 # Update Camera Max Angle #
 def UpdateCameraMaxAngle(*args):
     CheckCameraExists("renderCamera1")
     global camMaxAngle
     camMaxAngle = cmds.floatField("MaxAngleField", q=True, value=True)
-    UpdateCameraProximity()
+    UpdatePerRenderRotation()
+    UpdateCameraPosition()
+    RefreshPreview()
 
 def UpdatePerRenderRotation():
     global PerRenderRotation
     PerRenderRotation = (camMaxAngle-camStartAngle)/camDirectionCount
+    print(PerRenderRotation)
 
 def UpdatePreviewRotation(*args):
-    pass
+    global camDirection
+    camDirection = cmds.intSlider("PreviewSlider", q=True, value=True)
+    UpdateCameraPosition()
+    RefreshPreview()
+
+
 # Rotation Per Direction #
 # (camMaxAngle - camStartAngle) / camDirectionCount
 
@@ -164,6 +233,10 @@ def openSelectedOutputFolder(*args):
         subprocess.Popen(["open", folder])
     else:  # Linux
         subprocess.Popen(["xdg-open", folder])
+
+
+
+
 
 # Delete any old tool windows if already open #
 if cmds.window("RenderTool", exists=True):
@@ -241,8 +314,8 @@ cmds.frameLayout("RenderSettingsLayout", parent="ButtonLayoutScrollbar", marginW
 
 cmds.rowLayout("ResolutionRow", parent="RenderSettingsLayout", numberOfColumns=3)
 cmds.text("ResolutionText", parent="ResolutionRow", label="Sprite Resolution (W x H): ", width=TextWidth, align="right")
-cmds.intField("ResolutionField1", parent="ResolutionRow", value=defaultCamResolutionX, minValue=1, changeCommand=ResolutionChanged)
-cmds.intField("ResolutionField2", parent="ResolutionRow", value=defaultCamResolutionY, minValue=1, changeCommand=ResolutionChanged)
+cmds.intField("ResolutionField1", parent="ResolutionRow", value=defaultCamResolutionX, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=ResolutionChanged)
+cmds.intField("ResolutionField2", parent="ResolutionRow", value=defaultCamResolutionY, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=ResolutionChanged)
 
 #
 # ADD BACKGROUND TYPE OPTION MENU HERE
@@ -280,45 +353,23 @@ cmds.columnLayout("PreviewColumn", parent="PreviewLayout", adjustableColumn=True
 
 cmds.image("PreviewImage", parent="PreviewColumn", image="")
 
-cmds.intSliderGrp("PreviewAngleSlider", parent="PreviewColumn", label="Preview Angle", field=True, min=1, max=defaultDirectionCount, value=camDirection)
+cmds.rowLayout("PreviewSliderRow", parent="PreviewColumn", numberOfColumns=3, adjustableColumn=2)
+cmds.text("PreviewSliderText", parent="PreviewSliderRow", label="Preview Direction: ", width=TextWidth, align="right")
+cmds.intSlider("PreviewSlider", parent="PreviewSliderRow", min=1, max=defaultDirectionCount, value=defaultDirection, changeCommand=UpdatePreviewRotation)
+#cmds.intSliderGrp("PreviewAngleSlider", parent="PreviewColumn", label="Preview Angle", field=True, min=1, max=defaultDirectionCount, value=camDirection)
 
 #cmds.modelPanel("PreviewPanel", parent="PreviewLayout", label="Camera Preview", camera="renderCamera1")
-cmds.setAttr("defaultRenderGlobals.imageFormat", 8)
-cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "sprite_preview", type="string")
-cmds.setAttr("defaultRenderGlobals.enableDefaultLight", 1)
-default_project_images = cmds.workspace(expandName="images")
-#default_project_images = cmds.workspace(expandName="tmp")
-default_path = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.jpg")).replace("\\", "/")
-#default_path = os.path.join(default_project_images, "sprite_preview.jpg")
-print(default_path)
-
-
-def fix_path(path):
-    """
-    Ensures file paths are compatible with Maya across Windows/macOS/Linux.
-    Converts all slashes to forward (/) and expands environment variables.
-    """
-    if not path:
-        return ""
-    path = os.path.expandvars(path)
-    path = os.path.expanduser(path)
-    return path.replace("/", "\\")
-
-def RefreshPreview():
-    CheckCameraExists("renderCamera1")
-    cmds.render("renderCamera1", x=camResolutionX, y=camResolutionY)
-    #cmds.render("renderCamera1", x=256, y=256, writeImage=preview_path)
-    #mel.eval("render 'renderCamera1' -x 256 -y 256 -rd '{preview_path}'")
-    #mel.eval(f'render "renderCamera1" -x 256 -y 256 -l {preview_path}')
-    cmds.image("PreviewImage", e=True, image=default_path)
-    print(cmds.image("PreviewImage", q=True, image=True))
-    print(f"Preview updated: {default_path}")
-#"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.jpg"
-#RefreshPreview()
 
 
 
 
+
+
+if CheckCameraExists("renderCamera1"):
+    UpdatePreviewRotation()
+    UpdateTempOutputPath()
+    ResolutionChanged()
+    RefreshPreview()
 
 
 
