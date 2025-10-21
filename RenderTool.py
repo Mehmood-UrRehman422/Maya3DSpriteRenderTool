@@ -16,7 +16,7 @@ defaultCamStartAngle = 0
 defaultCamMaxAngle = 360
 
 defaultCamProximity = 5
-defaultCamHeight = 2
+defaultCamHeight = 0
 
 defaultCamResolutionX = 256
 defaultCamResolutionY = 256
@@ -24,6 +24,8 @@ defaultCamResolutionY = 256
 defaultCamMaxResolution = 8192
 
 default_path = ""
+
+previewable = True
 
 
 # MODIFIED VARIABLES #
@@ -66,6 +68,7 @@ def SetupCam(*args):
     cmds.intField("ResolutionField1", value=defaultCamResolutionX, e=True)
     cmds.intField("ResolutionField2", value=defaultCamResolutionY, e=True)
 
+    '''
     UpdateCameraDirectionCount()
     UpdateCameraHeight()
     UpdateCameraProximity()
@@ -74,21 +77,18 @@ def SetupCam(*args):
     UpdatePerRenderRotation()
     UpdatePreviewRotation()
     UpdateCameraPosition()
-    ResolutionChanged()
+    UpdateResolution()
     RefreshPreview()
+    '''
+    InitializeExistingCam()
 
+# Checks if the camera exists by inputting the name of the camera "renderCamera1" #
 def CheckCameraExists(Camera):
     if not cmds.objExists(Camera):
         cmds.warning("Render Camera not found! Please initialize first.")
         return
 
-
-
-
-
-
-
-
+# Sets the output path to the Temp Folder of the current workspace #
 def UpdateTempOutputPath():
     global default_path
     cmds.setAttr("defaultRenderGlobals.imageFormat", 8)
@@ -99,6 +99,7 @@ def UpdateTempOutputPath():
     default_path = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.jpg")).replace("\\", "/")
     #default_path = os.path.join(default_project_images, "sprite_preview.jpg")
 
+# Renames Path to right slashes so the path can be read #
 def fix_path(path):
     """
     Ensures file paths are compatible with Maya across Windows/macOS/Linux.
@@ -110,108 +111,101 @@ def fix_path(path):
     path = os.path.expanduser(path)
     return path.replace("/", "\\")
 
+# Create New Preview Render and set image to new Render #
 def RefreshPreview():
+    global previewable
     global default_path
-    CheckCameraExists("renderCamera1")
-    cmds.render("renderCamera1", x=camResolutionX, y=camResolutionY)
-    #cmds.render("renderCamera1", x=256, y=256, writeImage=preview_path)
-    #mel.eval("render 'renderCamera1' -x 256 -y 256 -rd '{preview_path}'")
-    #mel.eval(f'render "renderCamera1" -x 256 -y 256 -l {preview_path}')
-    cmds.image("PreviewImage", e=True, image=default_path)
-    print(cmds.image("PreviewImage", q=True, image=True))
-    print(f"Preview updated: {default_path}")
-#"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.jpg"
-#RefreshPreview()
+    if previewable == True:
+        CheckCameraExists("renderCamera1")
+        cmds.render("renderCamera1", x=camResolutionX, y=camResolutionY)
+        #cmds.render("renderCamera1", x=256, y=256, writeImage=preview_path)
+        #mel.eval("render 'renderCamera1' -x 256 -y 256 -rd '{preview_path}'")
+        #mel.eval(f'render "renderCamera1" -x 256 -y 256 -l {preview_path}')
+        cmds.image("PreviewImage", e=True, image=default_path)
+        print(cmds.image("PreviewImage", q=True, image=True))
+        print(f"Preview updated: {default_path}")
+    #"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.jpg"
 
-
-
-
-
-
-# Update Camera Direction Count #
-def UpdateCameraDirectionCount(*args):
-    CheckCameraExists("renderCamera1")
-    global camDirectionCount
-    camDirectionCount = cmds.intField("DirectionCountField", q=True, value=True)
-    cmds.intSlider("PreviewSlider", e=True, max=camDirectionCount, value=camDirection)
-    UpdateCameraPosition()
-    UpdatePerRenderRotation()
-    RefreshPreview()
-
-# Update Camera Proximity #
-def UpdateCameraProximity(*args):
-    CheckCameraExists("renderCamera1")
-    global camProximity
-    camProximity = cmds.floatField("CameraProximityField", q=True, value=True)
-    #cmds.setAttr("renderCamera1.translateX", camProximity)
-    UpdateCameraPosition()
-    RefreshPreview()
-
+# Updates both rotation, and the position of the camera #
 def UpdateCameraPosition():
     global camStartAngle
     global PerRenderRotation
     global camDirection
     global camProximity
-#    S=O/H
-#    SIN(ANGLE) = OPPOSITE / HYPOTENUSE
-#    SIN(ANGLE) * HYPOTENUSE = OPPOSITE
-#    SIN(Rotation) * CamDistance = CamLocationY
+    global camHeight
+    '''
+    S=O/H
+    SIN(ANGLE) = OPPOSITE / HYPOTENUSE
+    SIN(ANGLE) * HYPOTENUSE = OPPOSITE
+    SIN(Rotation) * CamDistance = CamLocationY
 
-#    C=A/H
-#    COS(ANGLE) = ADJACENT / HYPOTENUSE
-#    COS(ANGLE) * HYPOTENUSE = ADJECENT
-#    COS(Rotation) * CamDistance = CamLocationX
-
-#    T=O/A
+    C=A/H
+    COS(ANGLE) = ADJACENT / HYPOTENUSE
+    COS(ANGLE) * HYPOTENUSE = ADJECENT
+    COS(Rotation) * CamDistance = CamLocationX
+     '''
     CamPosX = math.sin(math.radians(camStartAngle + (PerRenderRotation * (camDirection-1)))) * camProximity
     CamPosZ = math.cos(math.radians(camStartAngle + (PerRenderRotation * (camDirection-1)))) * camProximity
+    CheckCameraExists("renderCamera1") # Cancels anything after this if camera does not exist #
     cmds.setAttr("renderCamera1.rotateY", (camStartAngle + ((camDirection-1) * PerRenderRotation)))
     cmds.setAttr("renderCamera1.translateX", CamPosX)
     cmds.setAttr("renderCamera1.translateZ", CamPosZ)
-
-# Update Camera Height #
-def UpdateCameraHeight(*args):
-    CheckCameraExists("renderCamera1")
-    global camHeight
-    camHeight = cmds.floatField("CameraHeightField", q=True, value=True)
     cmds.setAttr("renderCamera1.translateY", camHeight)
     RefreshPreview()
 
-# Update Camera Start Angle #
+# Update Camera Direction Count (How many directions there are available) #
+def UpdateCameraDirectionCount(*args):
+    global camDirectionCount
+    camDirectionCount = cmds.intField("DirectionCountField", q=True, value=True)
+    cmds.intSlider("PreviewSlider", e=True, max=camDirectionCount, value=camDirection)
+    UpdatePerRenderRotation()
+    UpdateCameraPosition()
+
+# Update Camera Proximity (distance from the object horizontally) #
+def UpdateCameraProximity(*args):
+    global camProximity
+    camProximity = cmds.floatField("CameraProximityField", q=True, value=True)
+    #cmds.setAttr("renderCamera1.translateX", camProximity)
+    UpdateCameraPosition()
+
+# Update Camera Height (vertical position) #
+def UpdateCameraHeight(*args):
+    global camHeight
+    camHeight = cmds.floatField("CameraHeightField", q=True, value=True)
+    UpdateCameraPosition()
+
+# Update Camera Start Angle to tell where the first direction begins #
 def UpdateCameraStartAngle(*args):
-    CheckCameraExists("renderCamera1")
     global camStartAngle
     camStartAngle = cmds.floatField("StartAngleField", q=True, value=True)
     #cmds.setAttr("renderCamera1.rotateY", (camStartAngle + (camDirection * PerRenderRotation)))
     UpdatePerRenderRotation()
     UpdateCameraPosition()
-    RefreshPreview()
 
-# Update Camera Max Angle #
+# Update Camera Max Angle to tell where the last direction ends #
 def UpdateCameraMaxAngle(*args):
-    CheckCameraExists("renderCamera1")
     global camMaxAngle
     camMaxAngle = cmds.floatField("MaxAngleField", q=True, value=True)
     UpdatePerRenderRotation()
     UpdateCameraPosition()
-    RefreshPreview()
 
+# Updates the rotation value for each direction #
 def UpdatePerRenderRotation():
     global PerRenderRotation
     PerRenderRotation = (camMaxAngle-camStartAngle)/camDirectionCount
-    print(PerRenderRotation)
+    print("Per Direction Rotation: " + str(PerRenderRotation))
 
+# Updates the Preview Direction Slider, called camDirection which the preview render reads #
 def UpdatePreviewRotation(*args):
     global camDirection
     camDirection = cmds.intSlider("PreviewSlider", q=True, value=True)
     UpdateCameraPosition()
-    RefreshPreview()
-
 
 # Rotation Per Direction #
 # (camMaxAngle - camStartAngle) / camDirectionCount
 
-def ResolutionChanged(*args):
+# Updates the Resolution of the Render / Preview both
+def UpdateResolution(*args):
     global camResolutionX
     global camResolutionY
     camResolutionX = cmds.intField("ResolutionField1", q=True, value=True)
@@ -225,6 +219,7 @@ def browseOutputFolder(*args):
         cmds.textField("OutputFolderField", e=True, text=folder[0])
         print("Output folder set to:", folder[0])
 
+# Opens the output save folder set in the function browseOutputFolder() above #
 def openSelectedOutputFolder(*args):
     folder = cmds.textField("OutputFolderField", text=True, q=True)
     if cmds.about(nt=True):  # Windows
@@ -234,147 +229,173 @@ def openSelectedOutputFolder(*args):
     else:  # Linux
         subprocess.Popen(["xdg-open", folder])
 
+# Initializes the camera #
+def InitializeExistingCam():
+    global previewable
+    previewable = False
+    UpdateCameraDirectionCount()
+    UpdateCameraStartAngle()
+    UpdateCameraMaxAngle()
+    UpdateCameraProximity()
+    UpdateCameraHeight()
+    #UpdateCameraPosition()
 
-
-
-
-# Delete any old tool windows if already open #
-if cmds.window("RenderTool", exists=True):
-    cmds.deleteUI("RenderTool", window=True)
-
-cmds.window("RenderTool", title="3D to Spritesheet Tool", widthHeight=(600,450))
-cmds.paneLayout("MasterLayout", parent="RenderTool", configuration="vertical2", paneSize=[1,70,100], separatorThickness=6)
-
-#cmds.columnLayout("ButtonLayout", parent=MasterLayout, columnOffset=["both", 15])
-cmds.frameLayout("ButtonLayout", parent="MasterLayout", marginWidth=15, marginHeight=15, label="Options/Settings", collapsable=True, collapse=False)
-
-#cmds.columnLayout("PreviewLayout", parent=MasterLayout, columnOffset=["both", 15])
-cmds.frameLayout("PreviewLayout", parent="MasterLayout", marginWidth=15, marginHeight=15, label="Preview")
-
-
-
-
-
-# BUTTON LAYOUT #
-# ------------- #
-cmds.button("InitializeButton", parent="ButtonLayout", label="Initialize", command=SetupCam)
-cmds.scrollLayout("ButtonLayoutScrollbar", parent="ButtonLayout", childResizable=True)
-
-# Frame for Camera Setup
-cmds.frameLayout("CameraSetupLayout", parent="ButtonLayoutScrollbar", marginWidth=5, marginHeight=5, label="Camera Setup", collapsable=True, collapse=False)
-cmds.columnLayout("CameraSetupColumn", parent="CameraSetupLayout", adjustableColumn=True)
-
-cmds.rowLayout("DirectionCountRow", parent="CameraSetupColumn", numberOfColumns=2)
-cmds.text("DirectionCountText", parent="DirectionCountRow", label="Number Of Directions: ", width=TextWidth, align="right")
-cmds.intField("DirectionCountField", parent="DirectionCountRow", value=defaultDirectionCount, minValue=1, maxValue=360, changeCommand=UpdateCameraDirectionCount)
-
-cmds.separator(parent="CameraSetupColumn")
-
-cmds.rowLayout("StartAngleRow", parent="CameraSetupColumn", numberOfColumns=2)
-cmds.text("StartAngleText", parent="StartAngleRow", label="Start Angle: ", width=TextWidth, align="right")
-cmds.floatField("StartAngleField", parent="StartAngleRow", value=defaultCamStartAngle, minValue=0, maxValue=360, changeCommand=UpdateCameraStartAngle)
-
-cmds.rowLayout("MaxAngleRow", parent="CameraSetupColumn", numberOfColumns=2)
-cmds.text("MaxAngleText", parent="MaxAngleRow", label="Maximum Angle: ", width=TextWidth, align="right")
-cmds.floatField("MaxAngleField", parent="MaxAngleRow", value=defaultCamMaxAngle, minValue=0, maxValue=360, changeCommand=UpdateCameraMaxAngle)
-
-cmds.separator(parent="CameraSetupColumn")
-
-cmds.rowLayout("CameraProximityFieldRow", parent="CameraSetupColumn", numberOfColumns=2)
-cmds.text("CameraProximityFieldText", parent="CameraProximityFieldRow", label="Camera Proximity: ", width=TextWidth, align="right")
-cmds.floatField("CameraProximityField", parent="CameraProximityFieldRow", value=defaultCamProximity, minValue=0, changeCommand=UpdateCameraProximity)
-
-cmds.rowLayout("CameraHeightFieldRow", parent="CameraSetupColumn", numberOfColumns=2)
-cmds.text("CameraHeightFieldText", parent="CameraHeightFieldRow", label="Camera Height: ", width=TextWidth, align="right")
-cmds.floatField("CameraHeightField", parent="CameraHeightFieldRow", value=defaultCamHeight, changeCommand=UpdateCameraHeight)
-
-#cmds.floatFieldGrp("CameraOffsetField", parent="CameraSetupLayout", label="Camera Offset (X,Y): ", numberOfFields=2, value1=5.0, value2=10.0)
-
-# Frame for Spritesheet Settings
-cmds.frameLayout("SpritesheetSettingsLayout", parent="ButtonLayoutScrollbar", marginWidth=5, marginHeight=5, label="Spritesheet Settings", collapsable=True, collapse=False)
-
-cmds.rowLayout("SplitByDirectionRow", parent="SpritesheetSettingsLayout", numberOfColumns=3)
-cmds.text("SplitByDirectionText", parent="SplitByDirectionRow", label="Split Spritesheet By Direction: ", width=TextWidth, align="right")
-cmds.checkBox("SplitByDirectionField", parent="SplitByDirectionRow", label="", value=True)
-
-# 
-# ADD COLLUMN INTFIELD HERE LATER
-# 
-
-cmds.rowLayout("CombineToSpritesheetRow", parent="SpritesheetSettingsLayout", numberOfColumns=2)
-cmds.text("CombineToSpritesheetText", parent="CombineToSpritesheetRow", label="Combine Sprites to Spritesheet: ", width=TextWidth, align="right")
-cmds.checkBox("CombineToSpritesheetField", parent="CombineToSpritesheetRow", label="", value=True)
-
-cmds.separator(parent="SpritesheetSettingsLayout")
-
-cmds.button("PreviewSheetButton", parent="SpritesheetSettingsLayout", label="Preview Spritesheet")
-
-#Frame for Render Settings
-cmds.frameLayout("RenderSettingsLayout", parent="ButtonLayoutScrollbar", marginWidth=5, marginHeight=5, label="Render Settings", collapsable=True, collapse=False)
-
-cmds.rowLayout("ResolutionRow", parent="RenderSettingsLayout", numberOfColumns=3)
-cmds.text("ResolutionText", parent="ResolutionRow", label="Sprite Resolution (W x H): ", width=TextWidth, align="right")
-cmds.intField("ResolutionField1", parent="ResolutionRow", value=defaultCamResolutionX, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=ResolutionChanged)
-cmds.intField("ResolutionField2", parent="ResolutionRow", value=defaultCamResolutionY, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=ResolutionChanged)
-
-#
-# ADD BACKGROUND TYPE OPTION MENU HERE
-#
-
-#
-# ADD LIGHTING PRESET OPTION MENU HERE
-#
-
-#
-# ADD RENDER METHOD RADIOBUTTONGRP HERE
-#
-
-cmds.rowLayout("OutputFolderRow", parent="RenderSettingsLayout", numberOfColumns=3, adjustableColumn=2)
-cmds.text("OutputFolderText", parent="OutputFolderRow", label="Output Folder: ", width=TextWidth, align="right")
-cmds.textField("OutputFolderField", parent="OutputFolderRow", text="")
-cmds.button("BrowseButton", parent="OutputFolderRow", label="Browse", command=browseOutputFolder)
-
-cmds.rowLayout("RenderButtonsRow", parent="ButtonLayout", numberOfColumns=3)
-cmds.button("RenderSpriteButton", parent="ButtonLayout", label="Render Sprite")
-cmds.button("RenderSheetButton", parent="ButtonLayout", label="Render Sheet")
-cmds.button("OpenFolderButton", parent="ButtonLayout", label="Open Folder", command=openSelectedOutputFolder)
-
-
-
-
-
-
-
-
-
-# PREVIEW PANEL #
-# ------------- #
-cmds.columnLayout("PreviewColumn", parent="PreviewLayout", adjustableColumn=True)
-
-cmds.image("PreviewImage", parent="PreviewColumn", image="")
-
-cmds.rowLayout("PreviewSliderRow", parent="PreviewColumn", numberOfColumns=3, adjustableColumn=2)
-cmds.text("PreviewSliderText", parent="PreviewSliderRow", label="Preview Direction: ", width=TextWidth, align="right")
-cmds.intSlider("PreviewSlider", parent="PreviewSliderRow", min=1, max=defaultDirectionCount, value=defaultDirection, changeCommand=UpdatePreviewRotation)
-#cmds.intSliderGrp("PreviewAngleSlider", parent="PreviewColumn", label="Preview Angle", field=True, min=1, max=defaultDirectionCount, value=camDirection)
-
-#cmds.modelPanel("PreviewPanel", parent="PreviewLayout", label="Camera Preview", camera="renderCamera1")
-
-
-
-
-
-
-if CheckCameraExists("renderCamera1"):
     UpdatePreviewRotation()
+    UpdateResolution()
+
     UpdateTempOutputPath()
-    ResolutionChanged()
+    previewable = True
     RefreshPreview()
 
+# Creates the full UI #
+def CreateUI():
+    # Delete any old tool windows if already open #
+    if cmds.window("RenderTool", exists=True):
+        cmds.deleteUI("RenderTool", window=True)
+
+    cmds.window("RenderTool", title="3D to Spritesheet Tool", widthHeight=(600,450))
+    cmds.paneLayout("MasterLayout", parent="RenderTool", configuration="vertical2", paneSize=[1,70,100], separatorThickness=6)
+
+    #cmds.columnLayout("ButtonLayout", parent=MasterLayout, columnOffset=["both", 15])
+    cmds.frameLayout("ButtonLayout", parent="MasterLayout", marginWidth=15, marginHeight=15, label="Options/Settings", collapsable=True, collapse=False)
+
+    #cmds.columnLayout("PreviewLayout", parent=MasterLayout, columnOffset=["both", 15])
+    cmds.frameLayout("PreviewLayout", parent="MasterLayout", marginWidth=15, marginHeight=15, label="Preview")
+
+    # BUTTON LAYOUT #
+    # ------------- #
+    cmds.button("InitializeButton", parent="ButtonLayout", label="Initialize", command=SetupCam)
+    cmds.scrollLayout("ButtonLayoutScrollbar", parent="ButtonLayout", childResizable=True)
+
+    # Frame for Camera Setup
+    cmds.frameLayout("CameraSetupLayout", parent="ButtonLayoutScrollbar", marginWidth=5, marginHeight=5, label="Camera Setup", collapsable=True, collapse=False)
+    cmds.columnLayout("CameraSetupColumn", parent="CameraSetupLayout", adjustableColumn=True)
+
+    cmds.rowLayout("DirectionCountRow", parent="CameraSetupColumn", numberOfColumns=2)
+    cmds.text("DirectionCountText", parent="DirectionCountRow", label="Number Of Directions: ", width=TextWidth, align="right")
+    cmds.intField("DirectionCountField", parent="DirectionCountRow", value=defaultDirectionCount, minValue=1, maxValue=360, changeCommand=UpdateCameraDirectionCount)
+
+    cmds.separator(parent="CameraSetupColumn")
+
+    cmds.rowLayout("StartAngleRow", parent="CameraSetupColumn", numberOfColumns=2)
+    cmds.text("StartAngleText", parent="StartAngleRow", label="Start Angle: ", width=TextWidth, align="right")
+    cmds.floatField("StartAngleField", parent="StartAngleRow", value=defaultCamStartAngle, minValue=0, maxValue=360, changeCommand=UpdateCameraStartAngle)
+
+    cmds.rowLayout("MaxAngleRow", parent="CameraSetupColumn", numberOfColumns=2)
+    cmds.text("MaxAngleText", parent="MaxAngleRow", label="Maximum Angle: ", width=TextWidth, align="right")
+    cmds.floatField("MaxAngleField", parent="MaxAngleRow", value=defaultCamMaxAngle, minValue=0, maxValue=360, changeCommand=UpdateCameraMaxAngle)
+
+    cmds.separator(parent="CameraSetupColumn")
+
+    cmds.rowLayout("CameraProximityFieldRow", parent="CameraSetupColumn", numberOfColumns=2)
+    cmds.text("CameraProximityFieldText", parent="CameraProximityFieldRow", label="Camera Proximity: ", width=TextWidth, align="right")
+    cmds.floatField("CameraProximityField", parent="CameraProximityFieldRow", value=defaultCamProximity, minValue=0, changeCommand=UpdateCameraProximity)
+
+    cmds.rowLayout("CameraHeightFieldRow", parent="CameraSetupColumn", numberOfColumns=2)
+    cmds.text("CameraHeightFieldText", parent="CameraHeightFieldRow", label="Camera Height: ", width=TextWidth, align="right")
+    cmds.floatField("CameraHeightField", parent="CameraHeightFieldRow", value=defaultCamHeight, changeCommand=UpdateCameraHeight)
+
+    #cmds.floatFieldGrp("CameraOffsetField", parent="CameraSetupLayout", label="Camera Offset (X,Y): ", numberOfFields=2, value1=5.0, value2=10.0)
+
+    # Frame for Spritesheet Settings
+    cmds.frameLayout("SpritesheetSettingsLayout", parent="ButtonLayoutScrollbar", marginWidth=5, marginHeight=5, label="Spritesheet Settings", collapsable=True, collapse=False)
+
+    cmds.rowLayout("SplitByDirectionRow", parent="SpritesheetSettingsLayout", numberOfColumns=3)
+    cmds.text("SplitByDirectionText", parent="SplitByDirectionRow", label="Split Spritesheet By Direction: ", width=TextWidth, align="right")
+    cmds.checkBox("SplitByDirectionField", parent="SplitByDirectionRow", label="", value=True)
+
+    # 
+    # ADD COLLUMN INTFIELD HERE LATER
+    # 
+
+    cmds.rowLayout("CombineToSpritesheetRow", parent="SpritesheetSettingsLayout", numberOfColumns=2)
+    cmds.text("CombineToSpritesheetText", parent="CombineToSpritesheetRow", label="Combine Sprites to Spritesheet: ", width=TextWidth, align="right")
+    cmds.checkBox("CombineToSpritesheetField", parent="CombineToSpritesheetRow", label="", value=True)
+
+    cmds.separator(parent="SpritesheetSettingsLayout")
+
+    cmds.button("PreviewSheetButton", parent="SpritesheetSettingsLayout", label="Preview Spritesheet")
+
+    #Frame for Render Settings
+    cmds.frameLayout("RenderSettingsLayout", parent="ButtonLayoutScrollbar", marginWidth=5, marginHeight=5, label="Render Settings", collapsable=True, collapse=False)
+
+    cmds.rowLayout("ResolutionRow", parent="RenderSettingsLayout", numberOfColumns=3)
+    cmds.text("ResolutionText", parent="ResolutionRow", label="Sprite Resolution (W x H): ", width=TextWidth, align="right")
+    cmds.intField("ResolutionField1", parent="ResolutionRow", value=defaultCamResolutionX, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=UpdateResolution)
+    cmds.intField("ResolutionField2", parent="ResolutionRow", value=defaultCamResolutionY, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=UpdateResolution)
+
+    #
+    # ADD BACKGROUND TYPE OPTION MENU HERE
+    #
+
+    #
+    # ADD LIGHTING PRESET OPTION MENU HERE
+    #
+
+    #
+    # ADD RENDER METHOD RADIOBUTTONGRP HERE
+    #
+
+    cmds.rowLayout("OutputFolderRow", parent="RenderSettingsLayout", numberOfColumns=3, adjustableColumn=2)
+    cmds.text("OutputFolderText", parent="OutputFolderRow", label="Output Folder: ", width=TextWidth, align="right")
+    cmds.textField("OutputFolderField", parent="OutputFolderRow", text="")
+    cmds.button("BrowseButton", parent="OutputFolderRow", label="Browse", command=browseOutputFolder)
+
+    cmds.rowLayout("RenderButtonsRow", parent="ButtonLayout", numberOfColumns=3)
+    cmds.button("RenderSpriteButton", parent="ButtonLayout", label="Render Sprite")
+    cmds.button("RenderSheetButton", parent="ButtonLayout", label="Render Sheet")
+    cmds.button("OpenFolderButton", parent="ButtonLayout", label="Open Folder", command=openSelectedOutputFolder)
 
 
+
+
+
+
+
+
+
+    # PREVIEW PANEL #
+    # ------------- #
+    cmds.columnLayout("PreviewColumn", parent="PreviewLayout", adjustableColumn=True)
+
+    cmds.image("PreviewImage", parent="PreviewColumn", image="")
+
+    cmds.rowLayout("PreviewSliderRow", parent="PreviewColumn", numberOfColumns=3, adjustableColumn=2)
+    cmds.text("PreviewSliderText", parent="PreviewSliderRow", label="Preview Direction: ", width=TextWidth, align="right")
+    cmds.intSlider("PreviewSlider", parent="PreviewSliderRow", min=1, max=defaultDirectionCount, value=defaultDirection, changeCommand=UpdatePreviewRotation)
+    #cmds.intSliderGrp("PreviewAngleSlider", parent="PreviewColumn", label="Preview Angle", field=True, min=1, max=defaultDirectionCount, value=camDirection)
+
+    #cmds.modelPanel("PreviewPanel", parent="PreviewLayout", label="Camera Preview", camera="renderCamera1")
+
+''' Code to initialize everything 
+def initializeSystems():
+    if CheckCameraExists("renderCamera1"):
+        UpdatePreviewRotation()
+        UpdateTempOutputPath()
+        UpdateResolution()
+        #RefreshPreview()
+        UpdateCameraDirectionCount()
+        UpdateCameraHeight()
+        UpdateCameraProximity()
+        UpdateCameraStartAngle()
+        UpdateCameraMaxAngle()
+        UpdatePerRenderRotation()
+        UpdatePreviewRotation()
+        UpdateCameraPosition()
+        UpdateResolution()
+        RefreshPreview()
+
+initializeSystems()
+'''
+
+
+CreateUI()
 cmds.showWindow("RenderTool")
-
+SetupCam()
+''' USE THIS WITH SAVE SYSTEM 
+if CheckCameraExists("renderCamera1"):
+    InitializeExistingCam()
+'''
 
 
 # INPUTS NEEDED #
@@ -401,3 +422,6 @@ cmds.showWindow("RenderTool")
 # Generate Sprites #
 # Generate Sheet #
 # Open Folder #
+
+
+# ADD SAVE SYSTEM #
