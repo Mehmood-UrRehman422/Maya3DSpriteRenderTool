@@ -23,7 +23,7 @@ defaultCamResolutionY = 256
 
 defaultCamMaxResolution = 8192
 
-default_path = ""
+defaultPreviewPath = ""
 
 previewable = True
 
@@ -90,14 +90,16 @@ def CheckCameraExists(Camera):
 
 # Sets the output path to the Temp Folder of the current workspace #
 def UpdateTempOutputPath():
-    global default_path
+    global defaultPreviewPath
+    global defaultTempSpritePath
     cmds.setAttr("defaultRenderGlobals.imageFormat", 8)
     cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "sprite_preview", type="string")
-    cmds.setAttr("defaultRenderGlobals.enableDefaultLight", 1)
+    cmds.setAttr("defaultRenderGlobals.enableDefaultLight", True)
     default_project_images = cmds.workspace(expandName="images")
     #default_project_images = cmds.workspace(expandName="tmp")
-    default_path = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.jpg")).replace("\\", "/")
-    #default_path = os.path.join(default_project_images, "sprite_preview.jpg")
+    defaultPreviewPath = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.jpg")).replace("\\", "/")
+    defaultTempSpritePath = os.path.normpath(os.path.join(default_project_images, "sprite.jpg")).replace("\\", "/")
+    #defaultPreviewPath = os.path.join(default_project_images, "sprite_preview.jpg")
 
 # Renames Path to right slashes so the path can be read #
 def fix_path(path):
@@ -111,19 +113,23 @@ def fix_path(path):
     path = os.path.expanduser(path)
     return path.replace("/", "\\")
 
+# Initializes the Rendering of the sprites from the current selection of settings #
+def StartRendering(*args):
+    pass
+
 # Create New Preview Render and set image to new Render #
 def RefreshPreview():
     global previewable
-    global default_path
+    global defaultPreviewPath
     if previewable == True:
         CheckCameraExists("renderCamera1")
         cmds.render("renderCamera1", x=camResolutionX, y=camResolutionY)
         #cmds.render("renderCamera1", x=256, y=256, writeImage=preview_path)
         #mel.eval("render 'renderCamera1' -x 256 -y 256 -rd '{preview_path}'")
         #mel.eval(f'render "renderCamera1" -x 256 -y 256 -l {preview_path}')
-        cmds.image("PreviewImage", e=True, image=default_path)
+        cmds.image("PreviewImage", e=True, image=defaultPreviewPath)
         print(cmds.image("PreviewImage", q=True, image=True))
-        print(f"Preview updated: {default_path}")
+        print(f"Preview updated: {defaultPreviewPath}")
     #"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.jpg"
 
 # Updates both rotation, and the position of the camera #
@@ -342,8 +348,8 @@ def CreateUI():
     cmds.button("BrowseButton", parent="OutputFolderRow", label="Browse", command=browseOutputFolder)
 
     cmds.rowLayout("RenderButtonsRow", parent="ButtonLayout", numberOfColumns=3)
-    cmds.button("RenderSpriteButton", parent="ButtonLayout", label="Render Sprite")
-    cmds.button("RenderSheetButton", parent="ButtonLayout", label="Render Sheet")
+    #cmds.button("RenderSpriteButton", parent="ButtonLayout", label="Render Sprite")
+    cmds.button("RenderSheetButton", parent="ButtonLayout", label="Render Spritesheet", command=StartRendering)
     cmds.button("OpenFolderButton", parent="ButtonLayout", label="Open Folder", command=openSelectedOutputFolder)
 
 
@@ -362,7 +368,7 @@ def CreateUI():
 
     cmds.rowLayout("PreviewSliderRow", parent="PreviewColumn", numberOfColumns=3, adjustableColumn=2)
     cmds.text("PreviewSliderText", parent="PreviewSliderRow", label="Preview Direction: ", width=TextWidth, align="right")
-    cmds.intSlider("PreviewSlider", parent="PreviewSliderRow", min=1, max=defaultDirectionCount, value=defaultDirection, changeCommand=UpdatePreviewRotation)
+    cmds.intSlider("PreviewSlider", parent="PreviewSliderRow", min=1, max=defaultDirectionCount, value=defaultDirection, changeCommand=UpdatePreviewRotation, dragCommand=UpdatePreviewRotation)
     #cmds.intSliderGrp("PreviewAngleSlider", parent="PreviewColumn", label="Preview Angle", field=True, min=1, max=defaultDirectionCount, value=camDirection)
 
     #cmds.modelPanel("PreviewPanel", parent="PreviewLayout", label="Camera Preview", camera="renderCamera1")
