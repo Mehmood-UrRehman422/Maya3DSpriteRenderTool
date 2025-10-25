@@ -3,6 +3,8 @@ import maya.mel as mel
 import os
 import subprocess
 import math
+from PIL import Image
+import json
 
 
 TextWidth = 180 # Width Of Text in ButtonLayoutFrame
@@ -25,9 +27,12 @@ defaultCamMaxResolution = 8192
 
 defaultPreviewPath = ""
 
+defaultImageType = 32
+
 previewable = True
 
-#Hello
+default_project_images = cmds.workspace(expandName="images")
+currentOutputFolder = default_project_images
 
 # MODIFIED VARIABLES #
 # ------------------ #
@@ -44,7 +49,6 @@ PerRenderRotation = 0.0
 
 camResolutionX = 0
 camResolutionY = 0
-
 
 # Function To Setup Camera initially when SetupCam is pressed #
 def SetupCam(*args):
@@ -93,14 +97,14 @@ def CheckCameraExists(Camera):
 def UpdateTempOutputPath():
     global defaultPreviewPath
     global defaultTempSpritePath
-    cmds.setAttr("defaultRenderGlobals.imageFormat", 8)
+    global default_project_images
+    cmds.setAttr("defaultRenderGlobals.imageFormat", defaultImageType)
     cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "sprite_preview", type="string")
     cmds.setAttr("defaultRenderGlobals.enableDefaultLight", True)
-    default_project_images = cmds.workspace(expandName="images")
     #default_project_images = cmds.workspace(expandName="tmp")
-    defaultPreviewPath = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.jpg")).replace("\\", "/")
-    defaultTempSpritePath = os.path.normpath(os.path.join(default_project_images, "sprite.jpg")).replace("\\", "/")
-    #defaultPreviewPath = os.path.join(default_project_images, "sprite_preview.jpg")
+    defaultPreviewPath = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.png")).replace("\\", "/")
+    #defaultTempSpritePath = os.path.normpath(os.path.join(default_project_images, "sprite.png")).replace("\\", "/")
+    #defaultPreviewPath = os.path.join(default_project_images, "sprite_preview.png")
 
 # Renames Path to right slashes so the path can be read #
 def fix_path(path):
@@ -116,7 +120,46 @@ def fix_path(path):
 
 # Initializes the Rendering of the sprites from the current selection of settings #
 def StartRendering(*args):
-    pass
+    global camDirectionCount
+    global camDirection
+    global previewable
+    previewable = False
+    print("directions: "+str(camDirectionCount))
+    for render in range(camDirectionCount):
+
+        camDirection = render+1
+        cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "sprite_Render_"+str(camDirection).zfill(3), type="string")
+
+        UpdateCameraPosition()
+        
+        cmds.render("renderCamera1", x=camResolutionX, y=camResolutionY)
+    previewable = True
+    MergeImages()
+    UpdateTempOutputPath()
+
+def MergeImages():
+    global default_project_images
+    global camResolutionX
+    global camResolutionY
+    global camDirectionCount
+    global currentOutputFolder
+    MaxResolutionX = camResolutionX # ADD ANIMATION FRAMES HERE #
+    MaxResolutionY = camResolutionY * camDirectionCount
+    spriteSheet = Image.new('RGBA', size=(MaxResolutionX, MaxResolutionY))
+    
+
+    #sprites = []
+    
+    for render in range(camDirectionCount):
+        #cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "sprite_Render_"+str(render+1).zfill(3), type="string")
+        #sprites.append(Image.open(os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_Render_"+str(render+1).zfill(3)+".png")).replace("\\", "/")))
+        #print(os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_Render_"+str(render+1).zfill(3)+".png")).replace("\\", "/"))
+        CurrentImage = Image.open(os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_Render_"+str(render+1).zfill(3)+".png")).replace("\\", "/"))
+        spriteSheet.paste(im=CurrentImage, box=(0,camResolutionY*render))
+    print(currentOutputFolder+"spritesheet.png")
+    spriteSheet.save(currentOutputFolder+"/spritesheet.png")    
+    UpdateTempOutputPath()
+
 
 # Create New Preview Render and set image to new Render #
 def RefreshPreview():
@@ -131,7 +174,7 @@ def RefreshPreview():
         cmds.image("PreviewImage", e=True, image=defaultPreviewPath)
         print(cmds.image("PreviewImage", q=True, image=True))
         print(f"Preview updated: {defaultPreviewPath}")
-    #"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.jpg"
+    #"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.png"
 
 # Updates both rotation, and the position of the camera #
 def UpdateCameraPosition():
@@ -222,8 +265,10 @@ def UpdateResolution(*args):
 # Function to Browse Save Folder for the outputs #    
 def browseOutputFolder(*args):
     folder = cmds.fileDialog2(dialogStyle=2, fileMode=3, caption="Select Output Folder")
-    if folder:
+    if folder:  
+        global currentOutputFolder
         cmds.textField("OutputFolderField", e=True, text=folder[0])
+        currentOutputFolder = folder[0]
         print("Output folder set to:", folder[0])
 
 # Opens the output save folder set in the function browseOutputFolder() above #
@@ -239,6 +284,7 @@ def openSelectedOutputFolder(*args):
 # Initializes the camera #
 def InitializeExistingCam():
     global previewable
+    global currentOutputFolder
     previewable = False
     UpdateCameraDirectionCount()
     UpdateCameraStartAngle()
@@ -246,6 +292,7 @@ def InitializeExistingCam():
     UpdateCameraProximity()
     UpdateCameraHeight()
     #UpdateCameraPosition()
+    cmds.textField("OutputFolderField", e=True, text=currentOutputFolder)
 
     UpdatePreviewRotation()
     UpdateResolution()
@@ -257,10 +304,15 @@ def InitializeExistingCam():
 # Creates the full UI #
 def CreateUI():
     # Delete any old tool windows if already open #
-    if cmds.window("RenderTool", exists=True):
-        cmds.deleteUI("RenderTool", window=True)
+    if cmds.workspaceControl("RenderTool", exists=True):
+        cmds.deleteUI("RenderTool")
+    
+    cmds.workspaceControl("RenderTool", label="3D-to-2D spritesheet tool")
 
-    cmds.window("RenderTool", title="3D to Spritesheet Tool", widthHeight=(600,450))
+    #if cmds.window("RenderTool", exists=True):
+    #    cmds.deleteUI("RenderTool", window=True)
+
+    #cmds.window("RenderTool", title="3D-to-2D spritesheet tool", widthHeight=(700,500))
     cmds.paneLayout("MasterLayout", parent="RenderTool", configuration="vertical2", paneSize=[1,70,100], separatorThickness=6)
 
     #cmds.columnLayout("ButtonLayout", parent=MasterLayout, columnOffset=["both", 15])
