@@ -1,10 +1,11 @@
 import maya.cmds as cmds
-import maya.mel as mel
+import maya.api.OpenMaya as OpenMaya
+import maya.api.OpenMayaUI as OpenMayaUI
 import os
 import subprocess
 import math
-from PIL import Image
-import json
+from PIL import Image, ImageOps
+import json # For Saving/Loading presets
 
 
 TextWidth = 180 # Width Of Text in ButtonLayoutFrame
@@ -20,8 +21,8 @@ defaultCamMaxAngle = 360
 defaultCamProximity = 5
 defaultCamHeight = 0
 
-defaultCamResolutionX = 256
-defaultCamResolutionY = 256
+defaultCamResolutionX = 64
+defaultCamResolutionY = 64
 
 defaultCamMaxResolution = 8192
 
@@ -33,6 +34,9 @@ previewable = True
 
 default_project_images = cmds.workspace(expandName="images")
 currentOutputFolder = default_project_images
+
+defaultStartFrame = cmds.playbackOptions(q=True, min=True)
+defaultEndFrame = cmds.playbackOptions(q=True, max=True)
 
 # MODIFIED VARIABLES #
 # ------------------ #
@@ -49,6 +53,9 @@ PerRenderRotation = 0.0
 
 camResolutionX = 0
 camResolutionY = 0
+
+StartFrame = 0
+EndFrame = 0
 
 # Function To Setup Camera initially when SetupCam is pressed #
 def SetupCam(*args):
@@ -102,6 +109,7 @@ def UpdateTempOutputPath():
     cmds.setAttr("defaultRenderGlobals.imageFilePrefix", "sprite_preview", type="string")
     cmds.setAttr("defaultRenderGlobals.enableDefaultLight", True)
     #default_project_images = cmds.workspace(expandName="tmp")
+    #defaultPreviewPath = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.png")).replace("\\", "/")
     defaultPreviewPath = os.path.normpath(os.path.join(default_project_images, "tmp", "sprite_preview.png")).replace("\\", "/")
     #defaultTempSpritePath = os.path.normpath(os.path.join(default_project_images, "sprite.png")).replace("\\", "/")
     #defaultPreviewPath = os.path.join(default_project_images, "sprite_preview.png")
@@ -168,12 +176,28 @@ def RefreshPreview():
     if previewable == True:
         CheckCameraExists("renderCamera1")
         cmds.render("renderCamera1", x=camResolutionX, y=camResolutionY)
+
         #cmds.render("renderCamera1", x=256, y=256, writeImage=preview_path)
         #mel.eval("render 'renderCamera1' -x 256 -y 256 -rd '{preview_path}'")
         #mel.eval(f'render "renderCamera1" -x 256 -y 256 -l {preview_path}')
+        
+        scale_w = cmds.columnLayout("PreviewColumn", q=True, width=True) / camResolutionX
+        scale_h = cmds.columnLayout("PreviewColumn", q=True, height=True) / camResolutionY
+        scale = min(scale_w, scale_h)  # scale to fit
+        new_width = int(camResolutionX * scale)
+        new_height = int(camResolutionY * scale)
+        print(new_width, new_height)
+        
+        PreviewImage = Image.open(defaultPreviewPath)
+        PreviewImage = ImageOps.scale(PreviewImage, scale, Image.Resampling.BOX)
+        PreviewImage.save(defaultPreviewPath)
         cmds.image("PreviewImage", e=True, image=defaultPreviewPath)
+        
+        #print(cmds.image("PreviewImage", q=True, width=True, height=True))
+        #cmds.image("PreviewImage", e=True, image=defaultPreviewPath)
         print(cmds.image("PreviewImage", q=True, image=True))
         print(f"Preview updated: {defaultPreviewPath}")
+        #cmds.image("PreviewImage", e=True, width=new_width, height=new_height)
     #"C:\\Users\\MRehm\\Documents\\maya\\projects\\default\\images\\tmp\\sprite_preview.png"
 
 # Updates both rotation, and the position of the camera #
@@ -286,6 +310,7 @@ def InitializeExistingCam():
     global previewable
     global currentOutputFolder
     previewable = False
+    CreateFrameChangeCallback()
     UpdateCameraDirectionCount()
     UpdateCameraStartAngle()
     UpdateCameraMaxAngle()
@@ -296,10 +321,70 @@ def InitializeExistingCam():
 
     UpdatePreviewRotation()
     UpdateResolution()
+    UpdateStartEndFrame()
 
     UpdateTempOutputPath()
     previewable = True
     RefreshPreview()
+
+def CreateFrameChangeCallback():
+    #cmds.callbacks(addCallback=on_time_changed, hook="timeChanged", owner="SpriteGenTool")
+    #cmds.callbacks(executeCallbacks=True, hook="timeChanged")
+    #OpenMaya.MMessage.removeAllCallbacks()
+    #OpenMaya.MEventMessage.removeCallback(OpenMaya.MEventMessage.getEventCall("timeChanged"))
+    #OpenMaya.MMessage.removeCallbacks(OpenMaya.MEventMessage.getEventNames())
+    #print(OpenMaya.MEventMessage.getEventNames())
+    #if "timeChanged" not in OpenMaya.MEventMessage.getEventNames():
+    #    OpenMaya.MEventMessage.addEventCallback("timeChanged", on_time_changed)
+    #    print(OpenMaya.MEventMessage.getEventNames())
+
+
+
+    
+    workspace = cmds.workspace(q=True, rd=True)
+    callback_file = str(workspace)+"callbacks.json"
+
+    # Try to remove old callback
+    if os.path.isfile(callback_file) and os.access(callback_file, os.R_OK):
+        with open(callback_file, "r") as f:
+            data = json.load(f)
+            old_id = data.get("timeChanged")
+            if old_id is not None:
+                try:
+                    OpenMaya.MMessage.removeCallback(old_id)
+                    print(f"Removed old callback with ID {old_id}")
+                except RuntimeError:
+                    print(f"Old callback ID {old_id} is invalid")
+
+    # Register new callback
+    callback_id = OpenMaya.MEventMessage.addEventCallback("timeChanged", on_time_changed)
+    with open(callback_file, "w") as f:
+        json.dump({"timeChanged": callback_id}, f)
+
+
+'''
+    if os.path.isfile("callbacks.json") and os.access("callbacks.json", os.R_OK):
+        # checks if file exists
+        print ("File exists and is readable")
+        with open("callbacks.json", "r") as f:
+            data = json.load(f)
+            OpenMaya.MMessage.removeCallback(data["timeChanged"])
+    else:
+        print ("Either file is missing or is not readable")
+        callback_id = OpenMaya.MEventMessage.addEventCallback("timeChanged", on_time_changed)
+        with open("callbacks.json", "w") as f:
+            json.dump({"timeChanged": callback_id}, f)
+'''
+
+
+# Updates th Start and End frame for the animation #
+def UpdateStartEndFrame(*args):
+    pass
+
+def on_time_changed(*args):
+    current_frame = cmds.currentTime(query=True)
+    RefreshPreview()
+    print(current_frame)
 
 # Creates the full UI #
 def CreateUI():
@@ -383,6 +468,11 @@ def CreateUI():
     cmds.intField("ResolutionField1", parent="ResolutionRow", value=defaultCamResolutionX, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=UpdateResolution)
     cmds.intField("ResolutionField2", parent="ResolutionRow", value=defaultCamResolutionY, minValue=1, maxValue=defaultCamMaxResolution, changeCommand=UpdateResolution)
 
+    cmds.rowLayout("StartEndFrameRow", parent="RenderSettingsLayout", numberOfColumns=3)
+    cmds.text("StartEndFrameText", parent="StartEndFrameRow", label="Start/End Frame: ", width=TextWidth, align="right")
+    cmds.intField("StartFrame", parent="StartEndFrameRow", value=defaultStartFrame, changeCommand=UpdateStartEndFrame)
+    cmds.intField("EndFrame", parent="StartEndFrameRow", value=defaultEndFrame, changeCommand=UpdateStartEndFrame)
+
     #
     # ADD BACKGROUND TYPE OPTION MENU HERE
     #
@@ -410,18 +500,24 @@ def CreateUI():
 
 
 
-
-
-
     # PREVIEW PANEL #
     # ------------- #
     cmds.columnLayout("PreviewColumn", parent="PreviewLayout", adjustableColumn=True)
 
+    #cmds.frameLayout("PreviewImageFrame", parent="PreviewColumn", marginWidth=5, marginHeight=5, label="Preview Image", collapsable=True, collapse=False)
     cmds.image("PreviewImage", parent="PreviewColumn", image="")
+    #cmds.picture("PreviewPicture", parent="PreviewColumn", image="")
 
-    cmds.rowLayout("PreviewSliderRow", parent="PreviewColumn", numberOfColumns=3, adjustableColumn=2)
+    cmds.rowLayout("PreviewSliderRow", parent="PreviewColumn", numberOfColumns=2, adjustableColumn=2)
     cmds.text("PreviewSliderText", parent="PreviewSliderRow", label="Preview Direction: ", width=TextWidth, align="right")
     cmds.intSlider("PreviewSlider", parent="PreviewSliderRow", min=1, max=defaultDirectionCount, value=defaultDirection, changeCommand=UpdatePreviewRotation, dragCommand=UpdatePreviewRotation)
+    
+    '''
+    cmds.rowLayout("TimeSliderRow", parent="PreviewColumn", numberOfColumns=2, adjustableColumn=2)
+    cmds.text("TimeSliderText", parent="TimeSliderRow", label="Current Frame: ", width=TextWidth, align="right")
+    cmds.timeField("TimeSliderField", parent="TimeSliderRow", value=defaultStartFrame)
+    '''
+
     #cmds.intSliderGrp("PreviewAngleSlider", parent="PreviewColumn", label="Preview Angle", field=True, min=1, max=defaultDirectionCount, value=camDirection)
 
     #cmds.modelPanel("PreviewPanel", parent="PreviewLayout", label="Camera Preview", camera="renderCamera1")
